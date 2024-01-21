@@ -14,7 +14,10 @@ class BudgetApiKtTest : ServerTest() {
 
     @BeforeEach
     internal fun setUp() {
-        transaction { BudgetTable.deleteAll() }
+        transaction {
+            BudgetTable.deleteAll()
+            AuthorTable.deleteAll()
+        }
     }
 
     @Test
@@ -75,12 +78,59 @@ class BudgetApiKtTest : ServerTest() {
             .then().statusCode(400)
     }
 
+    @Test
+    fun testAssureAuthorAddition() {
+        addAuthorRecord("Test Author")
+        addRecord(BudgetRecord(2020, 5, 100, BudgetType.Приход, 1))
+        addRecord(BudgetRecord(2020, 1, 5, BudgetType.Приход, 2))
+
+        RestAssured.given()
+            .queryParam("limit", 3)
+            .queryParam("offset", 0)
+            .get("/budget/year/2020/stats")
+            .toResponse<BudgetYearStatsResponse>().let { response ->
+                Assert.assertNull(response.items[0].authorName)
+                Assert.assertEquals("Test Author", response.items[1].authorName)
+                Assert.assertNotNull(response.items[1].authorCreationDate)
+            }
+    }
+
+    @Test
+    fun testAuthorFilter() {
+        addAuthorRecord("Nick")
+        addAuthorRecord("Helen")
+        addRecord(BudgetRecord(2020, 5, 100, BudgetType.Приход, 1))
+        addRecord(BudgetRecord(2020, 1, 5, BudgetType.Приход, 2))
+
+        RestAssured.given()
+            .queryParam("limit", 3)
+            .queryParam("offset", 0)
+            .queryParam("authorName","ick")
+            .get("/budget/year/2020/stats")
+            .toResponse<BudgetYearStatsResponse>().let { response ->
+                Assert.assertEquals("Nick", response.items[0].authorName)
+                Assert.assertEquals(1, response.items.size)
+            }
+    }
+
     private fun addRecord(record: BudgetRecord) {
         RestAssured.given()
             .jsonBody(record)
             .post("/budget/add")
             .toResponse<BudgetRecord>().let { response ->
-                Assert.assertEquals(record, response)
+                Assert.assertEquals(record.type, response.type)
+                Assert.assertEquals(record.year, response.year)
+                Assert.assertEquals(record.month, response.month)
+                Assert.assertEquals(record.amount, response.amount)
+            }
+    }
+
+    private fun addAuthorRecord(record: String) {
+        RestAssured.given()
+            .jsonBody(record)
+            .post("/author/add")
+            .toResponse<AuthorRecord>().let { response ->
+                Assert.assertEquals(record, response.fullName)
             }
     }
 }
